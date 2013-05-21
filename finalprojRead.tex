@@ -1,0 +1,200 @@
+\documentclass{article}
+
+
+\usepackage{graphicx}
+\usepackage{graphicx} % includegraphics command is implemented here
+\usepackage{titling}
+\usepackage{listings}
+\usepackage{color}
+\usepackage[font=scriptsize]{caption}
+
+\definecolor{dkgreen}{rgb}{0,0.6,0}
+\definecolor{gray}{rgb}{0.5,0.5,0.5}
+\definecolor{mauve}{rgb}{0.58,0,0.82}
+
+\lstset{frame=tb,
+  language=Python,
+  aboveskip=3mm,
+  belowskip=3mm,
+  showstringspaces=false,
+  columns=flexible,
+  basicstyle={\small\ttfamily},
+  numbers=none,
+  numberstyle=\tiny\color{gray},
+  keywordstyle=\color{blue},
+  commentstyle=\color{dkgreen},
+  stringstyle=\color{mauve},
+  breaklines=true,
+  breakatwhitespace=true
+  tabsize=3
+}
+\newcommand{\subtitle}[1]{%
+  \posttitle{%
+    \par\end{center}
+    \begin{center}\large#1\end{center}
+    \vskip0.2em}%
+}
+%pre-amble
+\title{\textbf{AI Game Engine}}
+\subtitle{ \emph{m by n} Tic Tac Toe with \emph{k} strikes and \emph{s} obstacles}
+\author{Abhishek Mishra}
+\date{May 18th, 2014}
+\begin{document}
+\maketitle % typeset the title
+\section{Introduction}
+     In this project, we desgin the A.I. for a computer agent that play a modified version of the Tic Tac Toe.The board is \emph{m by n}
+     where either agent needs to get a certain \emph{k} number of strikes to win the game. Additionally,
+     there can also be obstacles and/or X's and/or O's already set up on the board  before the start of the game such that
+     agents will be required to heuristically compute the best move to go for.
+
+\section{Theory}
+   The following are some of the techniques that have been used in designing the game A.I.
+
+    \begin{enumerate}
+      \item Min-max Search[(a)]
+      \item Alpha-Beta Pruning
+      \item Zobrist Hashing
+      \item Static Evaluation
+      \item Dynamic Evaluation
+    \end{enumerate}
+
+   The  A.I. relies on key idea that it is possible to lookahead a few moves down the decision tree and compute a \emph{dynamic evaluation}
+   that suggests the cost of making that move compared to other moves. Since the board size can vary from very small with no obstacles to
+   very large with high density of  obstacles, approaches are taken to optimize the lookahead computation by using \emph{alpha/beta pruning} and \emph{zobrist
+   hashing}.
+
+   Alph/beta pruning allows us to discard a subtree when it seems that further exploration will only minimimze (in case of X) or maximize(in case of O)
+   our computed heuristic and as such will work against us. This is because either agent needs to compute the alpha (for X) and beta (for O) at alternating depths
+   and attempt to reach an interior node where successive exploration will work against them or a leaf node beyond which  no more computation is possible. Any computation
+   at the root or the leaf or at the maximum depth set is known as \emph{static evaluation}. Hence, a node's static evaluation  is the cost of
+   being in that state. A node's \emph{dynamic evaluation} is the \emph{net static evaluation} computed for a certain depth of the subtree of that
+   node and is the cost of choosing that node such that this cost will favor successive moves for this agent after the next move.
+
+      \begin{figure}[h!]
+      \centering
+          \includegraphics[width=0.8\textwidth]{pruning}
+      \caption{An illustration of alpha–beta pruning. The grayed-out subtrees need not be explored (when moves are evaluated from left to right), since we know the group of     subtrees as a whole yields the value of an equivalent subtree or worse, and as such cannot influence the final result. The max and min levels represent the turn of the player and the adversary, respectively.}
+       \end{figure}
+
+  Other technique used here is Zobrist Hashing. Since computng dynamic evaluations takes large amount of recursions, it is not optimal to go through the minmax search
+  especially because  the state of the board changes by only 1 row/column with every move. Hence we hash every new static evaluation we compute. This works because each
+  state of the board is unique, i.e., there are no two or more states that look the same per game, which allows us to map these states to their static evaluation.
+
+  Static Evaluation is simply the sum of a polynomial derived from any given state. It is the cost of achieving the next state and is used to evaluate the best move
+  across different prospective next states. The polynomial used here is given by
+
+   $$\[ y = c_0 +  c_1B + c_2B^2 + c_3B^3 + c_4B^4 + \ldots c_nB^n   \]$$ \label{statEvalEqn}
+
+  In the above equation each $c_i$ represents the cost coefficient of the $i_{th}$ row or column. In our case, the cost coefficient is evaluated by taking into account
+    \begin{itemize}
+        \item the  maximum allowable opponent symbols.
+        \item the maximum allowable obstacles
+        \item the minimum number of empty spaces
+    \end{itemize}
+
+    Hence, if all the conditions are met, the coefficient for a given row is incremented by 1 and the same procedure is followed \emph{n} times for the given
+   state to construct \emph{n} coefficients. Note that the \emph{row} is only a term here since we do the same for column by transposing the state of the
+    board and calculating static eval for that state too. We calculate this in favor of both X's and O's  and the \emph{net cost heuristic} is given by
+
+    \begingroup
+        \fontsize{8pt}{10pt}\selectfont
+           $$\left( {staticEval}_{ mySymbol} + {staticEval^T}_{ mySymbol} \right) - \left( {staticEval}_{opponentSymbol} + {staticEval^T}_{opponentSymbol} \right)$$
+    \endgroup
+
+
+    where \emph{mySymbol} stands for the symbol you are playing for and \emph{opponentSymbol} is the one your opponent plays as. The \emph{T} superscript stands
+    for the transposed state. Recall, that we need to calculate static eval both for the regular and the transposed state and add them up.
+
+ \section{Implementation}
+    We use Python 3.2 to implement the  algorithms described in Section \ref{statEvalEqn}. The simplicity of the language allows for quick results and changes to be incorporated very easily.
+    Following are some of the key algorithms implemented in the project.
+
+     \subsection{Min-max Search with Alpha-beta pruning}
+
+    \begin{lstlisting}
+    # Returns the static eval by computing static and dynamic evaluations by looking ahead down the tree.
+    # Uses alpha-beta pruning to discard any path of lower (higher)  interest
+    def minmaxAlphaBeta(state, moveToAttainState, depth, alpha, beta):
+        global stats
+        if depth != 0:
+            stats[3]+=1          					# Increment the number of dynamic evaluation since we're at an interior node
+        if  depth == 0 or (isLeaf(state)):
+            stats[2]+=1 							# Increment the number of static evaluations since we're at a leaf or at the final depth
+            return hashAndGetStaticEval(state, depth)	  #static evaluation (base case)
+        successors, moves = successors_and_moves(state)
+        if state[1] == 'X':
+            i = 0
+            while i < len(successors):
+                alpha = max(alpha, minmaxAlphaBeta(successors[i], moves[i], depth - 1, alpha, beta))
+                if beta <= alpha:
+                    stats[1]+=1                 #Increment the number of beta cutoffs.
+                    break   				# (* Beta cut-off *)
+                i+=1
+            if stats[4] == depth:               #If we are at the depth where we want to return the successor and the move required to attain it
+                return [successors[i-1], moves[i-1], alpha]
+            else:
+                return alpha
+        else:
+            i = 0
+            while i < len(successors):
+                beta = min(beta, minmaxAlphaBeta(successors[i], moves[i], depth - 1, alpha, beta))
+                if beta <= alpha:
+                    stats[0]+=1                 # Increment the number of alpha cutoffs.
+                    break                           #  (* Alpha cut-off *)
+                i+=1
+            if stats[4] == depth:				#If we are at the depth where we want to return the successor and the move required to attain it
+                return [successors[i-1], moves[i-1], beta]
+            else:
+                return beta
+    \end{lstlisting}
+
+
+    \subsection{Zobrist Hashing}
+     \begin{lstlisting}
+        # Initialize zobrist hashtable with values
+        def iniZobristHash(rows, cols):
+            global zobristHash
+            zobristHash = [[[0 for i in range(4)] for j in range(n)] for z in range(m)]
+            for i in range(rows):
+                for j in range(cols):
+                    zobristHash[i][j][0] = random.randint(0, 4294967296) # for 'X'
+                    zobristHash[i][j][1] = random.randint(0, 4294967296) # for 'O'
+                    zobristHash[i][j][2] = random.randint(0, 4294967296) # for '-'
+                    zobristHash[i][j][3] = random.randint(0, 4294967296) # for ' '
+
+        # Returns the key corresponding to this state
+        def getStateKey(state):
+            global zobristHash
+            key = 0
+            for i in range(len(state[0])):
+                for j in range(len(state[0][0])):
+                    whatIsAtIJ = state[0][i][j]
+                    key^=zobristHash[i][j][getIndexForSymbol(whatIsAtIJ)]
+            return key
+
+     \end{lstlisting}
+
+     \subsection{Static evaluation of a given game  state}
+         \begin{lstlisting}
+             # Retuns the static evaluation of a state with m Rows and n Columns
+            # Used as a HELPER FUNCTION for staticEval(state)
+            def static_eval_rows(gamestate, forSymbol):
+                global n
+                global this_k
+                polynomial = 0
+                for i in range(n):
+                    coeffCtr = 0
+                    for row in gamestate:
+                        #if (number_of_forSymbols_in_this_row == i) and ( AgainstSymbol and '-' are not in row)
+                        numEmptySpaces = row.count(' ')
+                        numForSymbol = row.count(forSymbol)
+                        if (row.count(forSymbol) == i) and (numEmptySpaces >= this_k):
+                            coeffCtr+=1
+
+                    polynomial+= (10**i) * (coeffCtr)
+                return polynomial
+          \end{lstlisting}
+
+
+
+\end{document}
